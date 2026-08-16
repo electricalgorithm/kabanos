@@ -1,4 +1,4 @@
-require recipes-kernel/linux/linux-yocto.inc
+require recipes-kernel/linux/kernel-arch.inc
 
 LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9dd7b269db0b7fd2c4d46"
 
@@ -12,9 +12,7 @@ PV = "6.18+git"
 
 S = "${WORKDIR}/git"
 
-KMETA = ""
-KERNEL_DANGLING_FEATURES_WARN_ONLY = "1"
-
+KERNEL_DEFCONFIG = "defconfig"
 KERNEL_CONFIG_FRAGMENTS += " ${WORKDIR}/container.cfg"
 
 COMPATIBLE_MACHINE = "beaglebone-yocto"
