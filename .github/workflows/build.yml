@@ -1,0 +1,47 @@
+name: Build Kabanos Image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: docker compose build
+
+      - name: Run Yocto build
+        run: |
+          docker compose up -d
+          docker compose exec yocto-builder bash build.sh
+          docker compose exec yocto-builder bash -c "source openembedded-core/oe-init-build-env build && bitbake kabanos-image"
+
+      - name: Upload WIC image
+        uses: actions/upload-artifact@v4
+        with:
+          name: kabanos-image
+          path: |
+            build/tmp/deploy/images/qemux86-64/kabanos-image-*.wic
+            build/tmp/deploy/images/qemux86-64/*.wic.bmap
+          compression-level: 9
+          retention-days: 30
+
+      - name: Upload rootfs tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: kabanos-rootfs
+          path: build/tmp/deploy/images/qemux-64/*.tar.*
+          compression-level: 9
+          retention-days: 30
+
+      - name: Cleanup
+        run: docker compose down -v

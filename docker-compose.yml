@@ -1,0 +1,16 @@
+services:
+  yocto-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kabanos-yocto-builder:latest
+    container_name: kabanos-yocto
+    working_dir: /home/build/yocto
+    volumes:
+      - .:/home/build/yocto
+    environment:
+      - BB_NUMBER_THREADS=4
+      - PARALLEL_MAKE=-j4
+    command: /bin/bash
+    stdin_open: true
+    tty: true

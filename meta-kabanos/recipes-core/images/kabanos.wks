@@ -1,0 +1,4 @@
+part /boot --source bootimg-pcbios --ondisk sda --size 64M --fs-type=vfat --active --align 4
+part / --source rootfs --ondisk sda --size 2G --fs-type=ext4
+
+bootloader --ptable msdos --timeout=10 --append="root=/dev/sda2 rootwait rw console=ttyS0"
