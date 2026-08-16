@@ -13,8 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Fix workspace permissions for container user
+        run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
 
       - name: Build Docker image
         run: docker compose build
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kabanos-rootfs
-          path: build/tmp/deploy/images/qemux-64/*.tar.*
+          path: build/tmp/deploy/images/qemux86-64/*.tar.*
           compression-level: 9
           retention-days: 30
 
