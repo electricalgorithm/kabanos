@@ -3,8 +3,11 @@ meta-yocto/
 bitbake/
 meta-openembedded/
 meta-virtualization/
-build/
+build/cache/
+build/conf/conf-notes.txt
+build/conf/conf-summary.txt
 build/conf/sanity_info
+build/conf/templateconf.cfg
 build/tmp/
 build/sstate-cache/
 downloads/

@@ -30,8 +30,8 @@ jobs:
         with:
           name: kabanos-image
           path: |
-            build/tmp/deploy/images/qemux86-64/kabanos-image-*.wic
-            build/tmp/deploy/images/qemux86-64/*.wic.bmap
+            build/tmp/deploy/images/*/kabanos-image-*.wic
+            build/tmp/deploy/images/*/*.wic.bmap
           compression-level: 9
           retention-days: 30
 
@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kabanos-rootfs
-          path: build/tmp/deploy/images/qemux86-64/*.tar.*
+          path: build/tmp/deploy/images/*/*.tar.*
           compression-level: 9
           retention-days: 30
 
