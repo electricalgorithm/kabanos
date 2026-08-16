@@ -16,8 +16,8 @@ jobs:
       - name: Fix workspace permissions for container user
         run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
 
-      - name: Cache Yocto sstate
-        uses: actions/cache@v4
+      - name: Restore Yocto sstate cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             sstate-cache
@@ -55,6 +55,15 @@ jobs:
 
       - name: Cleanup
         run: docker compose down -v
+
+      - name: Save Yocto sstate cache
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            sstate-cache
+            downloads
+          key: yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}
 
   qemu-test:
     needs: build
