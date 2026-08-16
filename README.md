@@ -8,7 +8,7 @@ A minimal Yocto-based Linux distribution designed to run containers with Podman.
 - **Package Management**: IPK (opkg)
 - **Container Runtime**: Podman
 - **Init System**: sysvinit
-- **Target**: ARM (BeagleBone Black, `kabanos-bbb` machine)
+- **Target**: ARM (BeagleBone Black, `beaglebone-yocto` machine)
 
 ## Image Packages
 
@@ -43,9 +43,9 @@ bitbake kabanos-image
 ```
 
 Build artifacts will be in:
-- `build/tmp/deploy/images/kabanos-bbb/`
-- `kabanos-image-kabanos-bbb.wic` - Disk image for QEMU/hardware
-- `kabanos-image-kabanos-bbb.tar.*` - Root filesystem tarball
+- `build/tmp/deploy/images/beaglebone-yocto/`
+- `kabanos-image-beaglebone-yocto.wic` - Disk image for QEMU/hardware
+- `kabanos-image-beaglebone-yocto.tar.*` - Root filesystem tarball
 
 ## Running with QEMU
 
@@ -57,7 +57,7 @@ runqemu kabanos-image nographic slirp
 qemu-system-arm \
     -M beaglebone \
     -m 2048 \
-    -drive file=build/tmp/deploy/images/kabanos-bbb/kabanos-image-kabanos-bbb.wic,format=raw,if=virtio \
+    -drive file=build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic,format=raw,if=virtio \
     -netdev user,id=net0 \
     -device virtio-net-device,netdev=net0 \
     -nographic \

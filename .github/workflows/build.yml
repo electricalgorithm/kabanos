@@ -55,3 +55,58 @@ jobs:
 
       - name: Cleanup
         run: docker compose down -v
+
+  qemu-test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fix workspace permissions for container user
+        run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
+
+      - name: Download WIC image
+        uses: actions/download-artifact@v4
+        with:
+          name: kabanos-image
+          path: wic-image
+
+      - name: Build Docker image
+        run: docker compose build
+
+      - name: Start container
+        run: docker compose up -d
+
+      - name: Copy WIC image into container
+        run: |
+          WIC_FILE=$(find wic-image -name "kabanos-image-*.wic" | head -1)
+          echo "Found WIC image: $WIC_FILE"
+          docker cp "$WIC_FILE" yocto-builder:/tmp/kabanos-image.wic
+
+      - name: Run QEMU smoke test
+        run: |
+          docker compose exec yocto-builder bash -c '\
+            WIC_IMAGE="/tmp/kabanos-image.wic"; \
+            echo "Booting QEMU with $WIC_IMAGE"; \
+            timeout 120 qemu-system-arm \
+              -M beaglebone \
+              -m 2048 \
+              -drive file="$WIC_IMAGE",format=raw,if=virtio \
+              -netdev user,id=net0 \
+              -device virtio-net-device,netdev=net0 \
+              -nographic \
+              -serial mon:stdio \
+              2>&1 | tee /tmp/qemu.log || true; \
+            echo "=== QEMU LOG ==="; \
+            cat /tmp/qemu.log || true; \
+            if grep -qiE "Linux version|Booting Linux|login:|Password:|root@" /tmp/qemu.log; then \
+              echo "QEMU boot successful"; \
+              exit 0; \
+            else \
+              echo "QEMU boot did not show expected output"; \
+              exit 1; \
+            fi \
+          '
+
+      - name: Cleanup
+        run: docker compose down -v

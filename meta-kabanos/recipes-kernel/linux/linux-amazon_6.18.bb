@@ -14,4 +14,4 @@ S = "${WORKDIR}/git"
 KERNEL_DEFCONFIG = "multi_v7_defconfig"
 KERNEL_CONFIG_FRAGMENTS += " ${WORKDIR}/container.cfg"
 
-COMPATIBLE_MACHINE = "qemuarm|qemuarm64|kabanos-bbb"
+COMPATIBLE_MACHINE = "beaglebone-yocto"
