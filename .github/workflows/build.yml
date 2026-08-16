@@ -22,7 +22,7 @@ jobs:
           path: |
             sstate-cache
             downloads
-          key: yocto-sstate-${{ hashFiles('build/conf/local.conf', 'meta-kabanos/**') }}
+          key: yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}
           restore-keys: |
             yocto-sstate-
 
