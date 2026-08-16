@@ -11,7 +11,7 @@ IMAGE_INSTALL = "\
     iproute2 \
     socat \
     conmon \
-    runc \
+    runc-opencontainers \
     slirp4netns \
     fuse-overlayfs \
     "
