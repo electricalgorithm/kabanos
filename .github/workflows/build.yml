@@ -56,6 +56,9 @@ jobs:
       - name: Cleanup
         run: docker compose down -v
 
+      - name: Restore workspace permissions for post-job cleanup
+        run: sudo chown -R 1001:1001 $GITHUB_WORKSPACE
+
       - name: Save Yocto sstate cache
         uses: actions/cache/save@v4
         if: always()

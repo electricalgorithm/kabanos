@@ -13,6 +13,7 @@ PV = "6.18+git"
 S = "${WORKDIR}/git"
 
 KMETA = ""
+KERNEL_DANGLING_FEATURES_WARN_ONLY = "1"
 
 KERNEL_CONFIG_FRAGMENTS += " ${WORKDIR}/container.cfg"
 
