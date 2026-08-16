@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y \
     libncurses5-dev \
     libssl-dev \
     locales \
+    lz4 \
     make \
     nano \
     perl \
@@ -38,6 +39,7 @@ RUN apt-get update && apt-get install -y \
     unzip \
     wget \
     xz-utils \
+    zstd \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
