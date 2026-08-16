@@ -11,6 +11,8 @@ PV = "6.18+git"
 
 S = "${WORKDIR}/git"
 
+KMETA = ""
+
 KERNEL_DEFCONFIG = "multi_v7_defconfig"
 KERNEL_CONFIG_FRAGMENTS += " ${WORKDIR}/container.cfg"
 
