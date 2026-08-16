@@ -16,6 +16,16 @@ jobs:
       - name: Fix workspace permissions for container user
         run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
 
+      - name: Cache Yocto sstate
+        uses: actions/cache@v4
+        with:
+          path: |
+            sstate-cache
+            downloads
+          key: yocto-sstate-${{ hashFiles('build/conf/local.conf', 'meta-kabanos/**') }}
+          restore-keys: |
+            yocto-sstate-
+
       - name: Build Docker image
         run: docker compose build
 
