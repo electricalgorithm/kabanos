@@ -8,7 +8,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fix workspace permissions for container user
+        run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
+
+      - name: Build Docker image
+        run: docker compose build
+
+      - name: Start container
+        run: docker compose up -d
+
+      - name: Run Yocto validation
+        run: docker compose exec yocto-builder bash validate.sh
+
+      - name: Cleanup
+        run: docker compose down -v
+
   build:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

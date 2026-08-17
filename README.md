@@ -26,6 +26,70 @@ The `kabanos-image` includes:
 - `socat` — socket relay
 - `openssh` — SSH server (via `IMAGE_FEATURES`)
 
+## Project Structure
+
+```
+kabanos/
+├── openembedded-core/               # OpenEmbedded core (scarthgap)
+├── meta-yocto/                      # Yocto reference BSP/machines
+├── bitbake/                         # BitBake build tool
+├── meta-openembedded/               # OpenEmbedded layers
+├── meta-virtualization/             # Virtualization/container layer
+├── meta-kabanos/                    # Custom Kabanos layer
+│   ├── conf/
+│   │   ├── layer.conf
+│   │   ├── distro/kabanos.conf
+│   │   └── machine/
+│   ├── recipes-kernel/linux/
+│   │   ├── linux-stable_6.18.bb    # Vanilla kernel.org 6.18 recipe
+│   │   ├── defconfig               # BBB defconfig
+│   │   └── files/container.cfg     # Podman kernel config fragment
+│   └── recipes-core/images/
+│       ├── kabanos-image.bb
+│       └── kabanos.wks
+├── build/
+│   └── conf/
+│       ├── bblayers.conf
+│       └── local.conf
+├── validate.sh                      # Fast local validation script
+├── build.sh                         # Clone deps and init build env
+├── Dockerfile                       # Docker build environment
+├── docker-compose.yml
+└── .github/workflows/build.yml      # CI: validate + build + qemu-test
+```
+
+## Validation
+
+Before pushing, run the fast validation script to catch parse errors and config issues in ~5 minutes instead of waiting 1.5+ hours for a full CI build:
+
+```bash
+# Inside the container
+bash validate.sh
+```
+
+This script:
+1. Checks project structure and dependencies
+2. Sources the Yocto build environment
+3. Parses all recipes (`bitbake --parse-only`)
+4. Verifies the kernel recipe is available
+5. Generates the task queue without executing (`bitbake -n`)
+
+**Local workflow:**
+```bash
+# 1. Make changes
+# 2. Validate locally
+docker compose exec yocto-builder bash validate.sh
+
+# 3. If validation passes, push
+git add -A && git commit -m "message"
+git push origin main
+```
+
+**CI workflow:**
+- `validate` job runs first (~5-10 min)
+- If validation passes, `build` job runs (~hours)
+- If validation fails, build is skipped
+
 ## Building
 
 This project must be built on a Linux system. macOS hosts are not supported for native Yocto builds.
@@ -38,7 +102,10 @@ docker compose exec yocto-builder bash
 # Inside the container, run the build script
 bash build.sh
 
-# Build the image
+# Validate before full build (recommended)
+bash validate.sh
+
+# Build the image (this takes hours on first run)
 bitbake kabanos-image
 ```
 
