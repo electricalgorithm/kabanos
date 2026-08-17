@@ -57,7 +57,7 @@ echo ""
 
 # Check kernel recipe is available
 echo "Checking kernel recipe..."
-if bitbake -s | grep -q "linux-stable"; then
+if bitbake -s > /tmp/bitbake-s-output.txt && grep -q "linux-stable" /tmp/bitbake-s-output.txt; then
     echo "✓ linux-stable kernel recipe found"
 else
     echo "✗ linux-stable kernel recipe not found"
