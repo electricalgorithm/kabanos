@@ -13,6 +13,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore Yocto sstate cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            sstate-cache
+            downloads
+          key: yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}
+          restore-keys: |
+            yocto-sstate-
+
       - name: Fix workspace permissions for container user
         run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
 
@@ -21,6 +31,9 @@ jobs:
 
       - name: Start container
         run: docker compose up -d
+
+      - name: Clone Yocto dependencies
+        run: docker compose exec yocto-builder bash build.sh
 
       - name: Run Yocto validation
         run: docker compose exec yocto-builder bash validate.sh
