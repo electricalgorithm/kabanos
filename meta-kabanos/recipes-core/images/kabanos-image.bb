@@ -19,3 +19,7 @@ IMAGE_INSTALL = "\
 IMAGE_FEATURES += "ssh-server-openssh"
 
 EXTRA_IMAGE_FEATURES = "debug-tweaks"
+
+IMAGE_FSTYPES = "wic tar.xz"
+
+IMAGE_FSTYPES = "wic tar.xz"
