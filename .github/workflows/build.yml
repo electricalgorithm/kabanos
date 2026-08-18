@@ -91,7 +91,9 @@ jobs:
         run: docker compose down -v
 
       - name: Restore workspace permissions for post-job cleanup
-        run: sudo chown -R 1001:1001 $GITHUB_WORKSPACE
+        run: |
+          sudo chown -R 1001:1001 .git || true
+          sudo chown -R 1001:1001 $GITHUB_WORKSPACE || true
 
       - name: Save Yocto sstate cache
         uses: actions/cache/save@v4
