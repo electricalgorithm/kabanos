@@ -1,7 +1,7 @@
 inherit kernel
 
 LICENSE = "GPL-2.0-only"
-LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9dd7b269db0b7fd2c4d46"
+LIC_FILES_CHKSUM = "file://COPYING;md5=6bc538ed5bd9a7fc9398086aedcd7e46"
 
 SRCREV = "1efe5d048a391de3ead2804b2e7f86376c356cc5"
 
