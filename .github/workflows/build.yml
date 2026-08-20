@@ -59,8 +59,11 @@ jobs:
           docker compose exec yocto-builder bash build.sh
           docker compose exec yocto-builder bash -c "source openembedded-core/oe-init-build-env build && bitbake kabanos-image"
 
-      - name: List deploy directory
-        run: docker compose exec yocto-builder bash -c "find build/tmp/deploy/images -type f 2>/dev/null || echo 'no deploy files'"
+      - name: Copy deploy artifacts from container
+        run: |
+          mkdir -p build/tmp/deploy/images
+          docker cp kabanos-yocto:/tmp/yocto-tmp/deploy/images/beaglebone-yocto/. build/tmp/deploy/images/beaglebone-yocto/ || true
+          ls -la build/tmp/deploy/images/beaglebone-yocto/ || echo 'no artifacts copied'
 
       - name: Upload WIC image
         uses: actions/upload-artifact@v4
