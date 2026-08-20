@@ -34,6 +34,8 @@ jobs:
   build:
     needs: validate
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -61,9 +63,18 @@ jobs:
 
       - name: Copy deploy artifacts from container
         run: |
-          mkdir -p build/tmp/deploy/images
-          docker cp kabanos-yocto:/tmp/yocto-tmp/deploy/images/beaglebone-yocto/. build/tmp/deploy/images/beaglebone-yocto/ || true
-          ls -la build/tmp/deploy/images/beaglebone-yocto/ || echo 'no artifacts copied'
+          # $GITHUB_WORKSPACE was chowned to 1000:1000 above so the container's
+          # build user (uid 1000) can write build/conf. The runner itself is a
+          # different uid (1001), so a plain `docker cp` here fails to create
+          # build/tmp/... and used to be masked by `|| true`. Use sudo so the
+          # copy always succeeds regardless of who currently owns the tree,
+          # then hand ownership back to the runner for the upload/release steps.
+          sudo mkdir -p build/tmp/deploy/images/beaglebone-yocto
+          sudo docker cp kabanos-yocto:/tmp/yocto-tmp/deploy/images/beaglebone-yocto/. build/tmp/deploy/images/beaglebone-yocto/
+          sudo chown -R "$(id -u):$(id -g)" build/tmp
+          echo "Deploy artifacts:"
+          ls -la build/tmp/deploy/images/beaglebone-yocto/
+          test -e build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic
 
       - name: Upload WIC image
         uses: actions/upload-artifact@v4
@@ -82,6 +93,22 @@ jobs:
           path: build/tmp/deploy/images/beaglebone-yocto/*.tar.*
           compression-level: 9
           retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Kabanos build ${{ github.run_number }}
+          body: |
+            Automated Yocto build from commit ${{ github.sha }}.
+            Machine: beaglebone-yocto
+          files: |
+            build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic
+            build/tmp/deploy/images/beaglebone-yocto/*.wic.bmap
+            build/tmp/deploy/images/beaglebone-yocto/*.tar.*
 
       - name: Cleanup
         run: docker compose down -v
