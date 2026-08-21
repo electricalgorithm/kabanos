@@ -74,14 +74,21 @@ jobs:
           sudo chown -R "$(id -u):$(id -g)" build/tmp
           echo "Deploy artifacts:"
           ls -la build/tmp/deploy/images/beaglebone-yocto/
-          test -e build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic
+          # Yocto names the image kabanos-image-beaglebone-yocto.rootfs[-<timestamp>].wic,
+          # not kabanos-image-beaglebone-yocto.wic, so glob for it.
+          shopt -s nullglob
+          wic_files=(build/tmp/deploy/images/beaglebone-yocto/*.wic)
+          if [ ${#wic_files[@]} -eq 0 ]; then
+            echo "::error::No .wic image found in deploy directory"
+            exit 1
+          fi
 
       - name: Upload WIC image
         uses: actions/upload-artifact@v4
         with:
           name: kabanos-image
           path: |
-            build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic
+            build/tmp/deploy/images/beaglebone-yocto/*.wic
             build/tmp/deploy/images/beaglebone-yocto/*.wic.bmap
           compression-level: 9
           retention-days: 30
@@ -106,7 +113,7 @@ jobs:
             Automated Yocto build from commit ${{ github.sha }}.
             Machine: beaglebone-yocto
           files: |
-            build/tmp/deploy/images/beaglebone-yocto/kabanos-image-beaglebone-yocto.wic
+            build/tmp/deploy/images/beaglebone-yocto/*.wic
             build/tmp/deploy/images/beaglebone-yocto/*.wic.bmap
             build/tmp/deploy/images/beaglebone-yocto/*.tar.*
 
