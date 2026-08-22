@@ -45,8 +45,18 @@ jobs:
           path: |
             sstate-cache
             downloads
-          key: yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}
+          # actions/cache treats a key as immutable: once something is saved
+          # under a given key, later runs that hit that exact key skip saving
+          # entirely, even if the restored content is now stale. Since the
+          # previous key only hashed Dockerfile/build.sh/bblayers.conf (which
+          # rarely change), every run kept re-saving nothing, forever frozen
+          # at whatever was first cached. Suffixing the save key with the run
+          # id makes every run's save unique, while restore-keys still fall
+          # back to the newest matching prior run (or, failing that, any
+          # previous sstate cache at all).
+          key: yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}-${{ github.run_id }}
           restore-keys: |
+            yocto-sstate-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}-
             yocto-sstate-
 
       - name: Fix workspace permissions for container user
