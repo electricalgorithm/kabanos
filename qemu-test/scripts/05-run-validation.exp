@@ -1,0 +1,141 @@
+#!/usr/bin/expect -f
+# ============================================================================
+# Test-case driven QEMU boot validation.
+#
+# Boots the image once (scripts/04-boot-qemu.sh), logs in, then runs every
+# entry in TEST_CASES below over that one live shell, in order. Full
+# transcript goes to logs/qemu-console.log (via 04-boot-qemu.sh's own tee)
+# and logs/expect-transcript.log (via log_file below).
+#
+# HOW TO ADD A TEST
+# ------------------
+# Append one line to TEST_CASES. Each entry is a Tcl dict with keys:
+#
+#   name      Human-readable label, shown in the report.
+#   cmd       Shell command run inside the guest. Runs as-is (no extra
+#             quoting needed beyond normal shell syntax); reference the
+#             guest's own $?, quotes, pipes, etc. freely.
+#   rc        Expected exit code of `cmd`. Use "" to skip the check
+#             entirely (e.g. for a command whose exit code isn't meaningful).
+#   contains  Optional Tcl regexp that must appear somewhere in the
+#             command's echoed output. Use "" to skip.
+#   xfail     0 (default) = must pass, and a failure fails the whole suite.
+#             1 = a *known*, currently-failing case: reported as XFAIL
+#             (informational, does not fail the suite) if it still fails,
+#             or XPASS (flagged, DOES fail the suite) if it unexpectedly
+#             starts passing -- so a fixed bug can't silently go unnoticed.
+#
+# No other code in this file needs to change to add, remove, or reorder a
+# test case.
+# ============================================================================
+
+set timeout 180
+set root_dir [file normalize [file dirname $argv0]/..]
+log_file -a [file join $root_dir logs expect-transcript.log]
+
+set TEST_CASES {
+  {name "shell is responsive"                 cmd {echo ALIVE}                                                              rc 0 contains {ALIVE}                          xfail 0}
+  {name "kernel is 6.18.x"                    cmd {uname -r}                                                                 rc 0 contains {^6\.18\.}                       xfail 0}
+  {name "podman binary is installed"          cmd {which podman}                                                            rc 0 contains {/usr/bin/podman}                xfail 0}
+  {name "podman reports v5.x"                 cmd {podman --version}                                                        rc 0 contains {podman version 5\.}             xfail 0}
+  {name "mini-rootfs virtio disk is visible"  cmd {test -b /dev/vdb}                                                        rc 0 contains {}                               xfail 0}
+  {name "copy mini-rootfs off the disk"       cmd {dd if=/dev/vdb of=/tmp/mini-rootfs.tar bs=1M count=3}                     rc 0 contains {}                               xfail 0}
+  {name "podman import from local file (offline)" cmd {podman import /tmp/mini-rootfs.tar kabanos-mini:latest}               rc 0 contains {}                               xfail 0}
+  {name "imported image is listed"            cmd {podman images}                                                           rc 0 contains {localhost/kabanos-mini\s+latest} xfail 0}
+  {name "container create from local image (offline)" cmd {podman create --replace --name minitest kabanos-mini:latest /bin/sh -c 'echo hi'} rc 0 contains {}                 xfail 0}
+  {name "created container is listed"         cmd {podman ps -a}                                                            rc 0 contains {minitest}                       xfail 0}
+  {name "container start (known limitation: no ip_tables module for CNI NAT)" cmd {podman start -a minitest}                 rc 0 contains {}                               xfail 1}
+}
+
+# ----------------------------------------------------------------------------
+# Runner -- shouldn't need to change when adding test cases above.
+# ----------------------------------------------------------------------------
+
+proc run_case {tc} {
+  send "[dict get $tc cmd]; echo __RC__:\$?\r"
+  expect {
+    -re {#\s*$} { }
+    timeout { return {status FAIL reason {timed out waiting for shell prompt}} }
+  }
+  set out $expect_out(buffer)
+
+  if {![regexp {__RC__:(-?[0-9]+)} $out -> rc]} {
+    return {status FAIL reason {could not find return-code marker in output}}
+  }
+
+  set expected_rc [dict get $tc rc]
+  if {$expected_rc ne "" && $rc != $expected_rc} {
+    return [list status FAIL reason "rc=$rc, expected $expected_rc"]
+  }
+
+  set pattern [dict get $tc contains]
+  # -line: makes ^/$ anchor to line boundaries within $out, not just the
+  # very start/end of the whole captured buffer (which begins with the
+  # echoed command itself, not its output) -- without it, a pattern like
+  # "^6\.18\." only ever tests against the echoed command line and can
+  # never match the actual output further down.
+  if {$pattern ne "" && ![regexp -line $pattern $out]} {
+    return [list status FAIL reason "output did not match /$pattern/"]
+  }
+
+  return [list status PASS reason "rc=$rc"]
+}
+
+spawn bash [file join $root_dir scripts 04-boot-qemu.sh]
+
+expect {
+  "beaglebone-yocto login:" { send "root\r" }
+  timeout { puts "\n\[FAIL] Timed out waiting for login prompt"; exit 1 }
+}
+
+expect {
+  -re {#\s*$} { }
+  timeout { puts "\n\[FAIL] Timed out waiting for shell prompt after login"; exit 1 }
+}
+
+puts "\n== Kabanos QEMU validation suite: [llength $TEST_CASES] test case(s) =="
+
+set n_pass 0
+set n_fail 0
+set n_xfail 0
+set n_xpass 0
+
+foreach tc $TEST_CASES {
+  set name [dict get $tc name]
+  set xfail [dict get $tc xfail]
+  set result [run_case $tc]
+  set status [dict get $result status]
+  set reason [dict get $result reason]
+
+  if {$xfail} {
+    if {$status eq "PASS"} {
+      puts "\[XPASS] $name ($reason) -- previously-known failure now passes, update xfail 0"
+      incr n_xpass
+    } else {
+      puts "\[XFAIL] $name ($reason)"
+      incr n_xfail
+    }
+  } else {
+    if {$status eq "PASS"} {
+      puts "\[PASS]  $name ($reason)"
+      incr n_pass
+    } else {
+      puts "\[FAIL]  $name ($reason)"
+      incr n_fail
+    }
+  }
+}
+
+puts "\n== Summary: $n_pass passed, $n_fail failed, $n_xfail known-failed (xfail), $n_xpass unexpectedly-passed (xpass) =="
+
+puts "\n\[DONE] Validation sequence completed, powering off"
+send "poweroff -f\r"
+expect {
+  eof { }
+  timeout { puts "\n\[WARN] No clean poweroff/eof within timeout" }
+}
+
+if {$n_fail > 0 || $n_xpass > 0} {
+  exit 1
+}
+exit 0

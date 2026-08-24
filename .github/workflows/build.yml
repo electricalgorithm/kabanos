@@ -129,3 +129,89 @@ jobs:
 
       - name: Cleanup
         run: docker compose down -v
+
+  build-qemuarm:
+    # Runs after the beaglebone-yocto build (not in parallel with it) purely to
+    # avoid a race between the two jobs' "Publish GitHub Release" steps against
+    # the same tag_name -- by the time this runs, that release already exists
+    # and this just adds assets to it. Everything else about this job (cache
+    # key, deploy dir, artifact names) is fully separate from the `build` job
+    # above: qemuarm is a distinct MACHINE with its own tmp/deploy/images/qemuarm/
+    # output dir, so it cannot alter or overlap with beaglebone-yocto's build
+    # inputs/outputs in any way. See qemu-test/ for why this target exists:
+    # no QEMU machine model emulates the real beaglebone-yocto (AM335x)
+    # hardware, so qemuarm is the isolated, QEMU-native target used for
+    # boot/podman validation instead of BSP-specific hardware.
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Yocto sstate (qemuarm)
+        uses: actions/cache@v4
+        with:
+          path: |
+            sstate-cache
+            downloads
+          key: yocto-sstate-qemuarm-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}-${{ github.run_id }}
+          restore-keys: |
+            yocto-sstate-qemuarm-${{ hashFiles('Dockerfile', 'build.sh', 'build/conf/bblayers.conf') }}-
+            yocto-sstate-qemuarm-
+
+      - name: Fix workspace permissions for container user
+        run: sudo chown -R 1000:1000 $GITHUB_WORKSPACE
+
+      - name: Build Docker image
+        run: docker compose build
+
+      - name: Run Yocto build (qemuarm)
+        run: |
+          docker compose up -d
+          docker compose exec yocto-builder bash build.sh
+          docker compose exec yocto-builder bash -c "source openembedded-core/oe-init-build-env build && MACHINE=qemuarm bitbake kabanos-image"
+
+      - name: Copy deploy artifacts from container
+        run: |
+          sudo mkdir -p build/tmp/deploy/images/qemuarm
+          sudo docker cp kabanos-yocto:/tmp/yocto-tmp/deploy/images/qemuarm/. build/tmp/deploy/images/qemuarm/
+          sudo chown -R "$(id -u):$(id -g)" build/tmp
+          echo "Deploy artifacts:"
+          ls -la build/tmp/deploy/images/qemuarm/
+          # do_write_qemuboot_conf runs for every image regardless of exact
+          # IMAGE_FSTYPES, and is what runqemu needs to boot this target --
+          # unlike beaglebone-yocto's .wic, don't assume a specific rootfs
+          # filename/format here since qemuarm's default IMAGE_FSTYPES come
+          # from openembedded-core, not this repo.
+          shopt -s nullglob
+          qemuboot_files=(build/tmp/deploy/images/qemuarm/*.qemuboot.conf)
+          if [ ${#qemuboot_files[@]} -eq 0 ]; then
+            echo "::error::No .qemuboot.conf found in qemuarm deploy directory"
+            exit 1
+          fi
+
+      - name: Upload qemuarm image
+        uses: actions/upload-artifact@v4
+        with:
+          name: kabanos-image-qemuarm
+          path: build/tmp/deploy/images/qemuarm/*
+          compression-level: 9
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Kabanos build ${{ github.run_number }}
+          body: |
+            Automated Yocto build from commit ${{ github.sha }}.
+            Machines: beaglebone-yocto (hardware), qemuarm (QEMU boot validation)
+          files: |
+            build/tmp/deploy/images/qemuarm/*
+
+      - name: Cleanup
+        run: docker compose down -v
