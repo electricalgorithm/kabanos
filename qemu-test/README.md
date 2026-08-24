@@ -43,17 +43,48 @@ scripts/03-build-mini-rootfs-tarball.sh  # busybox + its real .so deps, pulled f
                                           # (requires partition 2 of the .wic mounted at /mnt/kabanos-root)
 scripts/04-boot-qemu.sh                  # boot: -M virt, the built zImage, the release .wic and mini-rootfs.tar
                                           # as two virtio-mmio disks, no -netdev at all
-scripts/05-run-validation.exp            # expect script: boot -> login -> `which podman` -> dd the second
-                                          # disk -> `podman import` -> `podman create` -> `podman start`
+scripts/05-run-validation.exp            # test-case suite: boot -> login -> run each case in TEST_CASES
+                                          # over the live shell -> report PASS/FAIL/XFAIL -> poweroff
 ```
 
 `logs/qemu-console.log` and `logs/expect-transcript.log` capture full
-transcripts of each run.
+transcripts of each run (the guest console session only -- the suite's own
+`[PASS]`/`[FAIL]` report lines are printed directly to the terminal running
+`expect`, not written into either log file).
 
 `artifacts/` and `linux-src/` and `logs/` are gitignored (regeneratable /
 environment-specific); only the scripts are tracked. The Kconfig fragment
 itself lives in `meta-kabanos/recipes-kernel/linux/files/qemuarm-virt.cfg`,
 not here -- it's a real recipe input, not a sandbox artifact.
+
+## The test suite (`scripts/05-run-validation.exp`)
+
+Boots the image once, then runs a list of independent test cases over that
+one live shell. It's data-driven specifically so adding a check never means
+touching the boot/login/runner plumbing -- you add one entry to the
+`TEST_CASES` list at the top of the file:
+
+```tcl
+{name "podman reports v5.x"   cmd {podman --version}   rc 0   contains {podman version 5\.}   xfail 0}
+```
+
+| key        | meaning                                                                                                   |
+|------------|-------------------------------------------------------------------------------------------------------------|
+| `name`     | label shown in the report                                                                                    |
+| `cmd`      | shell command run inside the guest, verbatim                                                                 |
+| `rc`       | expected exit code (`""` to skip the check)                                                                  |
+| `contains` | optional regexp the command's echoed output must match (`""` to skip; use `-line`-anchored patterns like `^foo` freely, e.g. `^6\.18\.`) |
+| `xfail`    | `0` = must pass, a failure fails the suite. `1` = a *known*, currently-failing case: reported as `XFAIL` (doesn't fail the suite) if it still fails, or `XPASS` (**does** fail the suite) if it unexpectedly starts passing -- so a fix can't silently go unnoticed |
+
+The suite exits non-zero if any non-`xfail` case fails, or if any `xfail`
+case unexpectedly passes (`XPASS`) -- suitable for wiring into CI later.
+
+The WIC image is a real disk file, not reset between runs, so state written
+by one test case (a created container, an imported image) is still there on
+the *next* run of the suite against the same `artifacts/kabanos-build-35.wic`.
+Cases that create named resources use `--replace`/equivalent idempotent
+flags rather than assuming a clean slate; keep that in mind for new cases,
+or re-run `scripts/00-download-release.sh` to get a pristine image.
 
 ## Two boot issues found and fixed while validating the 6.18 kernel
 
@@ -88,11 +119,12 @@ these scripts themselves -- not in the kernel or recipe -- both fixed here:
 
 With all three fixed, a kernel built from the real recipe's own
 `qemuarm-virt.cfg` fragment boots the unmodified build-35 release rootfs
-end to end: login succeeds, `podman --version` reports 5.0.3, and
-`podman import` + `podman create` build and register a container from the
-offline mini-rootfs tarball with no network device attached at all
-(`CREATE_RC=0`). `podman start` separately fails (`START_RC=125`) because
-the kernel's netfilter config lacks the `ip_tables` module CNI's bridge
-plugin needs for NAT -- a container-*networking* gap in the shared
-`defconfig`/`container.cfg` (present for the real hardware target too, not
-something this fragment introduced), not a boot failure.
+end to end. `scripts/05-run-validation.exp` currently passes 10 of 10
+required test cases -- login, kernel version, podman present/version, the
+mini-rootfs virtio disk, and building + registering a container from it
+entirely offline (`podman import`, `podman create`) -- plus one documented
+`xfail`: `podman start` fails (`rc=125`) because the kernel's netfilter
+config lacks the `ip_tables` module CNI's bridge plugin needs for NAT, a
+container-*networking* gap in the shared `defconfig`/`container.cfg`
+(present for the real hardware target too, not something this fragment
+introduced), not a boot failure.
