@@ -1,8 +1,9 @@
 # Downloaded release assets, cloned kernel source, and QEMU console logs are
-# large, regeneratable, and environment-specific -- keep only the scripts that
-# reproduce them (and the small virt-boot.cfg Kconfig fragment) under version
-# control. Run scripts/00 through scripts/05 in order to regenerate everything
-# below.
+# large, regeneratable, and environment-specific -- keep only the scripts
+# under version control. The virt-enabling Kconfig fragment now lives in
+# meta-kabanos/recipes-kernel/linux/files/qemuarm-virt.cfg (the real recipe
+# input), not here. Run scripts/00 through scripts/05 in order to regenerate
+# everything below.
 artifacts/
 linux-src/
 logs/

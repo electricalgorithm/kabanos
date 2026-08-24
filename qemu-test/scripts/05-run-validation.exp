@@ -4,6 +4,10 @@
 # rootfs tarball, entirely offline. Full transcript goes to logs/qemu-console.log
 # (via `script`) as well as stdout.
 
+# Prompt regex is bare "#\s*$" (not "[\r\n]#\s*$"): the actual PS1 on this
+# rootfs is "root@beaglebone-yocto:~# ", so the "#" is preceded by "~", not
+# by a newline -- an earlier version of this pattern assumed a bare "# "
+# prompt and silently never matched despite the shell already being up.
 set timeout 180
 set root_dir [file normalize [file dirname $argv0]/..]
 
@@ -16,55 +20,55 @@ expect {
 }
 
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out waiting for shell prompt after login"; exit 1 }
 }
 
 send "echo BOOT_OK; uname -a\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on uname"; exit 1 }
 }
 
 send "which podman && podman --version\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out checking podman"; exit 1 }
 }
 
 send "dd if=/dev/vdb of=/tmp/mini-rootfs.tar bs=1M count=3 2>&1; echo DD_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on dd from second virtio disk"; exit 1 }
 }
 
 send "podman import /tmp/mini-rootfs.tar kabanos-mini:latest; echo IMPORT_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on podman import"; exit 1 }
 }
 
 send "podman images; echo IMAGES_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on podman images"; exit 1 }
 }
 
 send "podman create --name minitest kabanos-mini:latest /bin/sh -c 'echo hello-from-container'; echo CREATE_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on podman create"; exit 1 }
 }
 
 send "podman ps -a; echo PS_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on podman ps -a"; exit 1 }
 }
 
 send "podman start -a minitest; echo START_RC=\$?\r"
 expect {
-  -re {[\r\n]#\s*$} { }
+  -re {#\s*$} { }
   timeout { puts "\n\[FAIL] Timed out on podman start"; exit 1 }
 }
 
