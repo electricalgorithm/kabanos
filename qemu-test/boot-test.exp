@@ -55,6 +55,8 @@ set TEST_CASES [list \
   [dict create name "qemuarm-virt.cfg applied"       cmd {zcat /proc/config.gz | grep -c '^CONFIG_ARCH_VIRT=y$'} rc 0 contains {(?n)^1\r*$}   xfail 0] \
   [dict create name "container.cfg applied"          cmd {zcat /proc/config.gz | grep -c -e '^CONFIG_OVERLAY_FS=y$' -e '^CONFIG_VETH=y$' -e '^CONFIG_BRIDGE=y$'} rc 0 contains {(?n)^3\r*$} xfail 0] \
   [dict create name "kernel modules match kernel"    cmd {test -d /lib/modules/$(uname -r)/kernel}        rc 0 contains {}                        xfail 0] \
+  [dict create name "cgroup v2 is mounted"           cmd {grep -c '^cgroup2 /sys/fs/cgroup ' /proc/mounts} rc 0 contains {(?n)^1\r*$}           xfail 0] \
+  [dict create name "iptables nat table available"   cmd {iptables -t nat -S >/dev/null}                  rc 0 contains {}                        xfail 0] \
   [dict create name "podman reports v5.x"            cmd {podman --version}                               rc 0 contains {podman version 5\.}      xfail 0] \
   [dict create name "podman info"                    cmd {podman info >/dev/null}                         rc 0 contains {}                        xfail 0] \
   [dict create name "build mini rootfs: busybox"     cmd {mkdir -p /tmp/mini/bin /tmp/mini/lib && cp -L /bin/busybox /tmp/mini/bin/ && ln -sf busybox /tmp/mini/bin/sh} rc 0 contains {} xfail 0] \

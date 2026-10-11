@@ -46,6 +46,8 @@ runs each entry of `TEST_CASES` over that shell:
 - the kernel is 6.18.x, and `/proc/config.gz` shows both `qemuarm-virt.cfg`
   and `container.cfg` were applied, and modules for the running kernel are
   installed
+- cgroup v2 is mounted and the iptables `nat` table is usable (what runc
+  and podman's CNI bridge network need)
 - `podman --version` reports 5.x, and `podman info` works
 - a minimal rootfs is built from the guest's own busybox and the libraries
   the dynamic loader reports for it, then `podman import`ed offline
