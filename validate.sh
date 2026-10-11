@@ -75,6 +75,28 @@ else
 fi
 echo ""
 
+# Same two checks again, but for MACHINE=qemuarm (used for QEMU boot
+# validation, see qemu-test/). This is what actually catches a broken
+# PREFERRED_PROVIDER_virtual/kernel override before it costs hours in the
+# real build job.
+echo "Parsing recipes for MACHINE=qemuarm (this may take a few minutes)..."
+if MACHINE=qemuarm bitbake --parse-only kabanos-image; then
+    echo "✓ Recipe parsing succeeded (qemuarm)"
+else
+    echo "✗ Recipe parsing failed (qemuarm)"
+    exit 1
+fi
+echo ""
+
+echo "Generating task queue (dry run) for MACHINE=qemuarm..."
+if MACHINE=qemuarm bitbake -n kabanos-image > /dev/null 2>&1; then
+    echo "✓ Task queue generated successfully (qemuarm)"
+else
+    echo "✗ Task queue generation failed (qemuarm)"
+    exit 1
+fi
+echo ""
+
 # Summary
 echo "=== Validation Complete ==="
 echo "All checks passed. Safe to push to GitHub Actions."

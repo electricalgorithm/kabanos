@@ -1,0 +1,169 @@
+#!/usr/bin/expect -f
+# ============================================================================
+# Boots a kabanos qemuarm image under QEMU's "virt" board, logs in on the
+# serial console and runs the TEST_CASES below over that one live shell.
+#
+# Usage: boot-test.exp <zImage> <rootfs.ext4> <console-log>
+#
+# Normally invoked through run-boot-test.sh, which locates the files in a
+# Yocto deploy directory. The rootfs is attached with snapshot=on, so the
+# image on disk is never modified and every run starts from a pristine state.
+# No network device is attached: everything the tests need is on the image.
+#
+# HOW TO ADD A TEST
+# -----------------
+# Append one entry to TEST_CASES. Each entry is a Tcl dict with keys:
+#
+#   name      Label shown in the report.
+#   cmd       Shell command run inside the guest, verbatim. Keep it on one
+#             short line: the serial console echoes it back.
+#   rc        Expected exit code ("" skips the check).
+#   contains  Tcl regexp that must match the command's output ("" skips).
+#             The output buffer also holds the echoed command line, so make
+#             the expected text something the command computes rather than
+#             a literal it contains (e.g. "echo ok-$((6*7))" -> "ok-42").
+#   xfail     0 = must pass. 1 = known failure: reported as XFAIL while it
+#             still fails, and as XPASS (which fails the suite) once it
+#             starts passing, so a fix can't go unnoticed.
+# ============================================================================
+
+if {[llength $argv] != 3} {
+  puts "usage: boot-test.exp <zImage> <rootfs.ext4> <console-log>"
+  exit 2
+}
+lassign $argv kernel rootfs console_log
+
+# Under TCG emulation on a CI runner, first boot (host key generation,
+# postinsts) and the first podman invocation are slow.
+set boot_timeout 900
+set cmd_timeout 300
+match_max 200000
+log_file -noappend $console_log
+
+# Unique prompt, so neither kernel messages nor command output can be
+# mistaken for it. The quotes split the literal in the echoed command line.
+set PROMPT "__KABANOS_PROMPT__# "
+set PROMPT_SET "export PS1='__KABANOS''_PROMPT__# '"
+
+# The "build mini rootfs" cases assemble a minimal rootfs from the guest's
+# own busybox and the libraries the dynamic loader says it needs, which is
+# then imported as a local image -- no registry or network involved.
+set LD /lib/ld-linux-armhf.so.3
+
+set TEST_CASES [list \
+  [dict create name "kernel is 6.18.x"               cmd {uname -r}                                       rc 0 contains {(?n)^6\.18\.}            xfail 0] \
+  [dict create name "qemuarm-virt.cfg applied"       cmd {zcat /proc/config.gz | grep -c '^CONFIG_ARCH_VIRT=y$'} rc 0 contains {(?n)^1\r*$}   xfail 0] \
+  [dict create name "container.cfg applied"          cmd {zcat /proc/config.gz | grep -c -e '^CONFIG_OVERLAY_FS=y$' -e '^CONFIG_VETH=y$' -e '^CONFIG_BRIDGE=y$'} rc 0 contains {(?n)^3\r*$} xfail 0] \
+  [dict create name "kernel modules match kernel"    cmd {test -d /lib/modules/$(uname -r)/kernel}        rc 0 contains {}                        xfail 0] \
+  [dict create name "cgroup v2 is mounted"           cmd {grep -c '^cgroup2 /sys/fs/cgroup ' /proc/mounts} rc 0 contains {(?n)^1\r*$}           xfail 0] \
+  [dict create name "iptables nat table available"   cmd {iptables -t nat -S >/dev/null}                  rc 0 contains {}                        xfail 0] \
+  [dict create name "podman reports v5.x"            cmd {podman --version}                               rc 0 contains {podman version 5\.}      xfail 0] \
+  [dict create name "podman info"                    cmd {podman info >/dev/null}                         rc 0 contains {}                        xfail 0] \
+  [dict create name "build mini rootfs: busybox"     cmd {mkdir -p /tmp/mini/bin /tmp/mini/lib && cp -L /bin/busybox /tmp/mini/bin/ && ln -sf busybox /tmp/mini/bin/sh} rc 0 contains {} xfail 0] \
+  [dict create name "build mini rootfs: libraries"   cmd "cp -L \$($LD --list /bin/busybox | grep -o '/\[^ \]*') /tmp/mini/lib/" rc 0 contains {} xfail 0] \
+  [dict create name "podman import (offline)"        cmd {tar -C /tmp/mini -c . | podman import - localhost/kabanos-mini:latest} rc 0 contains {} xfail 0] \
+  [dict create name "imported image is listed"       cmd {podman images}                                  rc 0 contains {localhost/kabanos-mini\s+latest} xfail 0] \
+  [dict create name "podman run, no network"         cmd {podman run --rm --network=none kabanos-mini /bin/sh -c 'echo run-ok-$((6*7))'} rc 0 contains {run-ok-42} xfail 0] \
+  [dict create name "container has own PID ns"       cmd {podman run --rm --network=none kabanos-mini /bin/sh -c 'echo pid-is-$$'} rc 0 contains {pid-is-1\M} xfail 0] \
+  [dict create name "podman run, default network"    cmd {podman run --rm kabanos-mini /bin/sh -c 'echo net-ok-$((6*7))'} rc 0 contains {net-ok-42} xfail 0] \
+  [dict create name "detached container lifecycle"   cmd {podman run -d --name bg --network=none kabanos-mini /bin/sh -c 'sleep 600' && podman ps | grep -c ' bg$' && podman rm -f -t 0 bg} rc 0 contains {(?n)^1\r*$} xfail 0] \
+]
+
+proc fail_now {msg} {
+  puts "\n\[FAIL] $msg"
+  exit 1
+}
+
+# Runs one shell command and waits for the prompt. Returns {rc output}.
+proc run_cmd {cmd} {
+  global PROMPT cmd_timeout
+  set timeout $cmd_timeout
+  send -- "$cmd; echo __RC__:\$?\r"
+  expect {
+    -ex $PROMPT { }
+    timeout { return [list timeout ""] }
+    eof { fail_now "QEMU exited while running: $cmd" }
+  }
+  set out $expect_out(buffer)
+  if {![regexp {__RC__:([0-9]+)} $out -> rc]} {
+    return [list norc $out]
+  }
+  return [list $rc $out]
+}
+
+proc run_case {tc} {
+  lassign [run_cmd [dict get $tc cmd]] rc out
+  if {$rc eq "timeout"} { return [list FAIL "timed out"] }
+  if {$rc eq "norc"} { return [list FAIL "no return code marker in output"] }
+
+  set expected_rc [dict get $tc rc]
+  if {$expected_rc ne "" && $rc != $expected_rc} {
+    return [list FAIL "rc=$rc, expected $expected_rc"]
+  }
+  set pattern [dict get $tc contains]
+  if {$pattern ne "" && ![regexp -- $pattern $out]} {
+    return [list FAIL "output did not match /$pattern/"]
+  }
+  return [list PASS "rc=$rc"]
+}
+
+spawn qemu-system-arm \
+  -M virt,highmem=off -cpu cortex-a15 -smp 2 -m 1024 \
+  -kernel $kernel \
+  -append "root=/dev/vda rw rootwait console=ttyAMA0,115200" \
+  -drive id=disk0,file=$rootfs,if=none,format=raw,snapshot=on \
+  -device virtio-blk-device,drive=disk0 \
+  -nic none -nographic -no-reboot -serial mon:stdio
+
+set timeout $boot_timeout
+expect {
+  -re {[\r\n][A-Za-z0-9._-]+ login: } { send "root\r" }
+  "Kernel panic" { fail_now "kernel panic during boot" }
+  timeout { fail_now "timed out waiting for login prompt" }
+  eof { fail_now "QEMU exited before reaching the login prompt" }
+}
+expect {
+  -re {[#$] } { }
+  "Password:" { fail_now "root login asks for a password" }
+  timeout { fail_now "timed out waiting for shell after login" }
+}
+
+# Keep kernel messages (e.g. bridge/veth state changes) off the console so
+# they can't interleave with command output.
+send -- "dmesg -n 1; $PROMPT_SET\r"
+expect {
+  -ex $PROMPT { }
+  timeout { fail_now "timed out setting the shell prompt" }
+}
+
+puts "\n== Kabanos QEMU boot test: [llength $TEST_CASES] case(s) =="
+set results {}
+set n_fail 0
+foreach tc $TEST_CASES {
+  lassign [run_case $tc] status reason
+  set name [dict get $tc name]
+  if {[dict get $tc xfail]} {
+    if {$status eq "PASS"} {
+      set status XPASS
+      incr n_fail
+    } else {
+      set status XFAIL
+    }
+  } elseif {$status ne "PASS"} {
+    incr n_fail
+  }
+  lappend results [format "\[%-5s] %s (%s)" $status $name $reason]
+}
+
+send -- "poweroff -f\r"
+set timeout 60
+expect {
+  eof { }
+  timeout { puts "\n\[WARN] QEMU did not exit after poweroff" }
+}
+
+log_file
+puts "\n== Results =="
+foreach line $results { puts $line }
+puts "== [expr {[llength $TEST_CASES] - $n_fail}]/[llength $TEST_CASES] OK, console log: $console_log =="
+exit [expr {$n_fail > 0 ? 1 : 0}]
