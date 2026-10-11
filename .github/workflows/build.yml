@@ -197,17 +197,20 @@ jobs:
 
       # Boots the image under QEMU's virt board and runs podman containers in
       # it; see qemu-test/README.md. Fails the job (and so skips publishing)
-      # if the image doesn't boot or podman can't run a container.
+      # if the image doesn't boot or podman can't run a container. The console
+      # log goes under runner.temp: the workspace was chowned to the build
+      # container's uid 1000 above, so the runner user can't create
+      # directories in it.
       - name: QEMU boot + podman test
         timeout-minutes: 60
-        run: qemu-test/run-boot-test.sh build/tmp/deploy/images/qemuarm qemu-test/logs/qemu-console.log
+        run: qemu-test/run-boot-test.sh build/tmp/deploy/images/qemuarm "${{ runner.temp }}/qemu-boot-test/qemu-console.log"
 
       - name: Upload QEMU console log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: qemu-boot-test-log
-          path: qemu-test/logs/
+          path: ${{ runner.temp }}/qemu-boot-test/
           if-no-files-found: ignore
           retention-days: 30
 
